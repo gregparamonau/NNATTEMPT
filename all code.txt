@@ -1,0 +1,683 @@
+NN_MAIN
+#include "NN.h"
+#include "layer.h"
+#include "matrix.h"
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+#include <time.h>
+
+//function to write the predicted output to a file:
+
+void write_prediction_to_file(NN * nn, const char * testing_file, const char * write_file, const char * write_file_proper) {
+    FILE * read = fopen(testing_file, "r");
+    FILE * write = fopen(write_file, "w");
+    FILE * write_proper = fopen(write_file_proper, "w");
+
+    //get how many data points, inputs, outputs
+    if (!read) {
+        printf("FILE NOT FOUND!\n");
+        return;
+    }
+
+    char line [1000];
+    char * tok;
+    const char * delim = " \t\n";
+
+    fgets(line, 1000, read);
+
+    //char * token = strtok(line, delim);
+    int N, I, O;
+    
+    tok = strtok(line, delim);
+    if (tok) sscanf(tok, "%d", &N); else printf("TOKEN NOT FOUND 221\n");
+
+    tok = strtok(NULL, delim);
+    if (tok) sscanf(tok, "%d", &I); else printf("TOKEN NOT FOUND 224\n");
+
+    tok = strtok(NULL, delim);
+    if (tok) sscanf(tok, "%d", &O); else printf("TOKEN NOT FOUND 227\n");
+
+    vector * in = create_vector_random(I, 0);
+    vector * out = create_vector_random(O, 0);
+
+    for (int x = 0; x<N; x++) {
+        //initialize the line reader
+        fgets(line, 1000, read);
+        strtok(line, delim);
+
+        //read input vector
+        for (int i = 0; i< I; i++) {
+            tok = strtok(NULL, delim);
+            if (!tok) {
+                printf("TESTING FILE FUCKED LINE: %d. ERROR LINE 243\n", x);
+                return;
+            }
+            in -> data [i] = atof(tok);
+        }
+
+        //read correct output vector
+        for (int o = 0; o < O; o++) {
+            tok = strtok(NULL, delim);
+            if (!tok) {
+                printf("TESTING FILE FUCKED LINE: %d. ERROR LINE 253\n", x);
+                return;
+            }
+            out -> data[o] = atof(tok);
+        }
+
+        calculate_outputs(nn, in -> data); //calcualte outputs
+        for (int y = 0; y < in -> n; y++) {
+            fprintf(write, "%f, ", in -> data [y]);
+            fprintf(write_proper, "%f, ", in -> data [y]);
+        }
+        fprintf(write, "%f\n", nn -> prob -> data[0]);
+        fprintf(write_proper, "%f\n", out -> data[0]);
+
+    }
+    free_vector(in);
+    free_vector(out);
+
+    fclose(read);
+    fclose(write);
+}
+
+
+//gcc -g /Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/nn_main.c /Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/NN.c /Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/layer.c /Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/matrix.c -o nn_main
+//gcc -g /Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/nn_main.c -o nn_main
+//gcc -g *.c -o nn_main
+int main() {
+    srand(time(NULL));
+    NN * nn;
+
+    int n_in, n_out, n_lay, hidden_lay, update, iterations;
+    double alpha;
+    printf("Enter # Inputs");
+    scanf("%d", &n_in);
+
+    if (n_in != -1) {
+         printf("Enter # Outputs");
+        scanf("%d", &n_out);
+
+        printf("Enter # Layers [including input & output]");
+        scanf("%d", &n_lay);
+
+        printf("Enter # of Nodes / Hidden Layer");
+        scanf("%d", &hidden_lay);
+
+        printf("Enter # of Epochs");
+        scanf("%d", &iterations);
+
+        alpha = 0.0001 / hidden_lay / n_lay;
+
+        printf("Update Along Way?");
+        scanf("%d", &update);
+    }
+    else {
+        n_out = 2;
+        n_lay = 4;
+        hidden_lay = 4;
+        alpha = 0.001;
+        update = 1;
+    }
+
+    //create array
+    int * layers = (int *) malloc (n_lay * sizeof(int));
+    for (int x = 1; x< n_lay - 1; x++) layers[x] = hidden_lay;
+    layers[0] = n_in;
+    layers[n_lay - 1] = n_out;
+
+    const char * training_file = "/Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/training.txt";
+    const char * testing_file = "/Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/testing.txt";
+    const char * write_file = "/Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/output.txt";
+    const char * write_file_proper = "/Users/gregoryparamonau/Desktop/VSCode/NNATTEMPT/output_prop.txt";
+
+    int epochs[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000};
+    int counter = 0;
+    //let's test accuracies as a function of epochs (complete runs through dataset)
+
+    create_nn(& nn, n_lay, layers, ReLU, dReLU);
+    print_nn(nn);
+
+    //test epochs up to 1000, increments of 1 for 0-10, increments of 10 for 10-100, and increments of 100 for 100-1000
+
+    for (int x = 0; x<iterations + 1; x++) {
+        if ((x == epochs [counter] || x % 10 == 0) && update) {
+            counter ++;
+            printf("%d, %f\n", x, test(nn, testing_file));
+            //print_nn(nn);
+        }
+        learn(nn, training_file, alpha);
+        //print_nn(nn);
+    }
+
+    print_nn(nn);
+
+    //write_prediction_to_file(nn, testing_file, write_file, write_file_proper);
+
+    return 0;
+}
+NN
+#include "NN.h"
+#include "layer.h"
+#include "matrix.h"
+#include "math.h"
+
+#include <stdlib.h>
+#include "math.h"
+#include <stdio.h>
+#include <string.h>
+
+//create & delete
+void create_nn(NN ** nn, int n_lay, int * nodes_layer, double (*act)(double), double (*act_prime)(double)) {
+    (* nn) = (NN *) malloc (sizeof(NN));
+
+    //params
+    (* nn) -> n_inputs = nodes_layer[0];
+    (* nn) -> n_layers = n_lay;
+    (* nn) -> n_outputs = nodes_layer[n_lay - 1];
+
+    initialise_layer(&((* nn) -> head), NULL, nodes_layer[0], nodes_layer[1], act, act_prime);
+    layer * layer_ptr = (*nn) -> head;
+
+    (* nn) -> input = (* nn) -> head -> input;
+
+    //hidden layers
+    for (int x = 1; x<n_lay - 2; x++) {
+        initialise_layer(&(layer_ptr -> next), layer_ptr, nodes_layer[x], nodes_layer[x + 1], act, act_prime);
+        layer_ptr = layer_ptr -> next;
+    }
+    initialise_layer(&(layer_ptr -> next), layer_ptr, nodes_layer[n_lay - 2], nodes_layer[n_lay - 1], Lin, dLin);
+    layer_ptr = layer_ptr -> next;
+
+    (* nn) -> last = layer_ptr;
+    (* nn) -> output = layer_ptr -> output;
+    (* nn) -> prob = create_vector_random((* nn) -> n_outputs, 0); //initialize to 0
+
+}
+void free_nn (NN * nn) {
+    layer * lay = nn -> head;
+    for (int x = 0; x<nn -> n_layers; x++) {
+        layer * temp = lay;
+        lay = lay -> next;
+
+        free_layer(temp);
+    }
+    free(nn -> prob);
+
+    free(nn);
+}
+
+//forward
+void calculate_outputs(NN * nn, double * in) {
+    set_vector(nn -> input, in, nn -> n_inputs);
+
+    layer * ptr = nn -> head;
+    //loop over hidden layers
+    while (ptr -> next) {
+        progress_layer(ptr);
+        ptr = ptr -> next;
+    }
+
+    //final layer needs to be handled separately
+    //ie generate prob vector for nn using this 
+    softmax(nn);
+
+}
+
+/*void softmax(NN * nn) {
+    double max = nn -> output -> data[0];
+    for (int i = 1; i < nn -> output -> n; i++)
+        if (nn -> output -> data[i] > max) max = nn -> output -> data[i];
+
+    double sum = 0;
+    for (int i = 0; i < nn -> output -> n; i++) {
+        nn -> prob -> data[i] = exp(nn -> output -> data[i] - max);
+        sum += nn -> prob -> data[i];
+    }
+
+    for (int i = 0; i < nn -> output -> n; i++) {
+        nn -> prob -> data[i] /= sum;
+    }
+}*/
+
+void softmax(NN * nn) {
+    //calculate sum of exp(out) first
+    double sum = 0;
+    for (int x = 0; x< nn -> n_outputs; x++) {
+        sum += exp(nn -> output -> data[x]);
+    }
+    double inv_sum = 1.0 / sum;
+
+    for (int x = 0; x<nn -> n_outputs; x++) nn -> prob -> data[x] = exp(nn -> output -> data[x]) * inv_sum;
+}
+
+//learn
+void learn(NN * nn, const char * training_file, double alpha) {
+    //file structured in the following way
+    //first line: [N: number of data points], [I: number of inputs], [O: number of outputs] //, [T: fraction of points reserved for training]
+    //every following line: [Random character], [first I numbers: data point inputs], [next O numbers: correct data point outputs]
+
+    FILE * fp = fopen(training_file, "r");
+    if (!fp) {
+        printf("FILE NOT FOUND!\n");
+        return;
+    }
+
+    char line [1000];
+    char * tok;
+    const char * delim = " \t\n";
+
+    fgets(line, 1000, fp);
+
+    //char * token = strtok(line, delim);
+    int N, I, O;
+    tok = strtok(line, delim);
+    if (tok) sscanf(tok, "%d", &N); else printf("TOKEN NOT FOUND 101\n"); //find number of data points in dataset
+
+    tok = strtok(NULL, delim);
+    if (tok) sscanf(tok, "%d", &I); else printf("TOKEN NOT FOUND 104\n");
+
+    tok = strtok(NULL, delim);
+    if (tok) sscanf(tok, "%d", &O); else printf("TOKEN NOT FOUND 107\n");
+
+    vector * in = create_vector_random(I, 0);
+    vector * out = create_vector_random(O, 0);
+
+    for (int x = 0; x<N; x++) {
+        //initialize the line reader
+        fgets(line, 1000, fp);
+        strtok(line, delim);
+
+        //read input vector
+        for (int i = 0; i< I; i++) {
+            tok = strtok(NULL, delim);
+            if (!tok) {
+                printf("TRAINING FILE FUCKED UP: 121\n");
+                return;
+            }
+            in -> data [i] = atof(tok);
+        }
+
+        //read correct output vector
+        for (int o = 0; o < O; o++) {
+            tok = strtok(NULL, delim);
+            if (!tok) {
+                printf("TRAINING FILE FUCKED UP: 131\n");
+                return;
+            }
+            out -> data [o] = atof(tok);
+        }
+
+        calculate_outputs(nn, in -> data); //calcualte outputs
+        back_prop(nn, nn -> last, out, alpha); //backprpagate and update the weights & biases
+    }
+
+    free_vector(in);
+    free_vector(out);
+
+}
+
+void back_prop(NN * nn, layer * last, vector * onehot, double alpha) {
+    //process:
+    //preliminary, final layer is slightly different
+        //* compute L_j = dL/dof_j (final layer outputs) = pj - yj (softmax - one-hot)
+        //* 
+    //* compute next layer update vector
+        //* L_j = sum{k}{dL/dfk (saved previous layer input update [k]) * dfk/dok (relu prime [ok current layer output [k]]) * dok/dij (W_kj)}
+    //* compute & update weights matrix W = W - alpha DW
+        //* DW_k row common multiple: dL/dfk (saved previous layer input update [k]) * dfk/dok (relu prime [ok (current layer output[k])])
+        //* DW_kj = DW_k * ij [input of current layer [j]]
+        //* DW = [dL/dok] * [i]^T
+    //* compute & update biases vector B = B - alpha DB
+        //* B_k = dl/dfk (saved previous later input update [k]) * dfk/dok (relu prime [ok (current layer output [k])]) * (dok / dB_k [1])
+    
+    //step 1: final layer dL/dof_j
+    vector * Lj = create_vector_random(nn -> n_outputs, 0);
+    for (int x = 0; x < Lj -> n; x++) Lj -> data[x] = nn -> prob -> data[x] - onehot -> data[x];
+
+    layer * ptr = last;
+
+    //step 2: while loop (until prev == NULL)
+    do {
+
+        //calculate weights biases update vectors
+        vector * newLj = create_vector_random(ptr -> n_inputs, 0);
+        matrix * DW = create_matrix_random(ptr -> weights -> m, ptr -> weights -> n, 0);
+        vector * DB = create_vector_random(ptr -> n_outputs, 0);
+
+        for (int k = 0; k < ptr -> weights -> m; k++) {
+            double dldok = Lj -> data[k] * ptr -> activation_prime(ptr -> output -> data[k]);
+            DB -> data[k] += - alpha * dldok;
+            for (int j = 0; j < ptr -> weights -> n; j++) {
+                newLj -> data[j] += dldok * ptr -> weights -> data[k * ptr -> weights -> n + j];
+                DW -> data [k * DW -> n + j] = - alpha * dldok * ptr -> input -> data[j];
+            }
+        }
+
+        //update weights & biases
+        add_mat(ptr -> weights, ptr -> weights, DW);
+        add_vec(ptr -> biases, ptr -> biases, DB);
+
+        free_matrix(DW);
+        free_vector(DB);
+
+        free_vector(Lj);
+        Lj = newLj;
+
+        ptr = ptr -> prev;
+        //calculate biases vector
+    } while (ptr);
+
+    free_vector(Lj);
+}
+
+double test(NN * nn, const char * test_file) {
+    //file formatted in the same way that the training file is formatted
+    FILE * fp = fopen(test_file, "r");
+    if (!fp) {
+        printf("FILE NOT FOUND!\n");
+        return -1;
+    }
+
+    char line [1000];
+    char * tok;
+    const char * delim = " \t\n";
+
+    fgets(line, 1000, fp);
+
+    //char * token = strtok(line, delim);
+    int N, I, O;
+    
+    tok = strtok(line, delim);
+    if (tok) sscanf(tok, "%d", &N); else printf("TOKEN NOT FOUND 221\n");
+
+    tok = strtok(NULL, delim);
+    if (tok) sscanf(tok, "%d", &I); else printf("TOKEN NOT FOUND 224\n");
+
+    tok = strtok(NULL, delim);
+    if (tok) sscanf(tok, "%d", &O); else printf("TOKEN NOT FOUND 227\n");
+    
+    vector * in = create_vector_random(I, 0);
+    vector * out = create_vector_random(O, 0);
+
+    int sum = 0;
+
+    for (int x = 0; x<N; x++) {
+        //initialize the line reader
+        fgets(line, 1000, fp);
+        strtok(line, delim);
+
+        //read input vector
+        for (int i = 0; i< I; i++) {
+            tok = strtok(NULL, delim);
+            if (!tok) {
+                printf("TESTING FILE FUCKED LINE: %d. ERROR LINE 243\n", x);
+                return -1;
+            }
+            in -> data [i] = atof(tok);
+        }
+
+        //read correct output vector
+        for (int o = 0; o < O; o++) {
+            tok = strtok(NULL, delim);
+            if (!tok) {
+                printf("TESTING FILE FUCKED LINE: %d. ERROR LINE 253\n", x);
+                return -1;
+            }
+            out -> data[o] = atof(tok);
+        }
+
+        calculate_outputs(nn, in -> data); //calcualte outputs
+        sum += (argmax(out) == argmax(nn -> prob));
+    }
+    free_vector(in);
+    free_vector(out);
+
+    return (double) sum / N;
+}
+
+void print_output(NN * nn) {
+    for (int x = 0; x< nn -> n_outputs; x++) {
+        printf("output %d: %f\n", x, nn -> prob -> data[x]);
+    }
+}
+void print_nn(NN * nn) {
+    layer * ptr = nn -> head;
+
+    while (ptr) {
+        print_mat(ptr -> weights);
+        printf("\n");
+        print_vec(ptr -> biases);
+        printf("\n\n");
+        ptr = ptr -> next;
+    }
+}
+
+//host of activation functions;
+//leaky ReLU
+double ReLU(double in) {
+    return tanh(in);/*
+    if (in >= 0) return in;
+    return 0;*/
+}
+
+double dReLU(double in) {
+    double a = tanh(in);
+    return 1 - a * a;
+   /*if (in >= 0) return 1;
+    return 0;*/
+}
+
+double Lin(double in) {
+    return in;
+}
+double dLin(double in) {
+    return 1;
+}
+
+double SoftPlus(double in) {
+    return log(1 + exp(in));
+}
+double dSoftPlus(double in) {
+    return 1.0 / (1 + exp(-in));
+}
+
+double t(double in) {
+    return exp(in) - 1;
+}
+double dt(double in) {
+    return exp(in);
+}
+LAYER 
+#include "layer.h"
+#include <stdlib.h>
+#include <math.h>
+
+void initialise_layer(layer ** new_layer, layer * prev_layer, int num_inputs, int num_outputs, double (*act)(double), double (*act_prime)(double)) {
+    * new_layer = (layer *) malloc (sizeof(layer));
+    (* new_layer) -> n_inputs = num_inputs;
+    (* new_layer) -> n_outputs = num_outputs;
+    (* new_layer) -> activation = act;
+    (* new_layer) -> activation_prime = act_prime;
+    (* new_layer) -> prev = prev_layer;
+
+    (* new_layer) -> input = create_vector_random(num_inputs, 0);
+    (* new_layer) -> output = create_vector_random(num_outputs, 0);
+    (* new_layer) -> next = NULL;
+
+    if (num_outputs != -1) {
+        (* new_layer) -> weights = create_matrix_random(num_outputs, num_inputs, 1);
+        (* new_layer) -> biases = create_vector_random(num_outputs, 0);
+    }
+
+    //if (prev_layer) prev_layer -> next = *new_layer;
+    // O = W(I) + B
+}
+void progress_layer(layer * in) {
+    //O = WI + B
+    if (in -> next == NULL) return; //do nothing if the layer has no write-to
+
+    mult_vec(in -> output, in -> weights, in -> input); //WI
+    add_vec(in -> output, in -> output, in -> biases); //B
+
+    //apply activation, and store result in next 
+    apply_act(in -> next -> input, in -> output, in -> activation);
+}
+
+void free_layer(layer * in) {
+    free_matrix(in -> weights);
+    free_vector(in -> biases);
+    free_vector(in -> input);
+    free_vector(in -> output);
+
+    free(in);
+}
+MATRIX
+#include "matrix.h"
+#include <stdlib.h>
+#include <stdio.h>
+
+matrix * create_matrix_from_data(int m, int n, double * data) {
+    matrix * out = (matrix *) malloc (sizeof(matrix));
+    out -> m = m;
+    out -> n = n;
+    out -> data = (double *) malloc (n * m * sizeof(double));
+
+    for (int x = 0; x<n * m; x++) out -> data[x] = data[x];
+
+    return out;
+}
+matrix * create_matrix_random(int m, int n, int range) {
+    matrix * out = (matrix *) malloc (sizeof(matrix));
+    out -> m = m;
+    out -> n = n;
+    out -> data = (double *) malloc (m * n * sizeof(double));
+
+    for (int x = 0; x<m * n; x++) out -> data[x] = (double)(rand() % (2 * range * 10 + 1) - (range * 10)) / 10.0;
+
+    return out;
+}
+
+vector * create_vector_from_data(int n, double * data) {
+    vector * out = (vector *) malloc (sizeof(vector));
+    out -> n = n;
+    out -> data = (double * ) malloc (n * sizeof(double));
+
+    for (int x = 0; x<n; x++) out -> data[x] = data[x];
+    
+    return out;
+}
+vector * create_vector_random(int n, int range) {
+    vector * out = (vector *) malloc (sizeof(vector));
+    out -> n = n;
+    out -> data = (double *) malloc (n * sizeof(double));
+
+    for (int x = 0; x<n; x++) out -> data[x] = (double)(rand() % (2 * range * 10 + 1) - (range * 10)) / 10.0;
+
+    return out;
+}
+
+void set_vector(vector * in, double * data, int n) {
+    if (n != in -> n) {
+        printf("DIMENSIONS OF in: %d, AND data: %d DON'T MATCH: ", in -> n, n);
+        return;
+    }
+
+    for (int x = 0; x<n; x++) in -> data[x] = data[x];
+}
+
+void mult_vec(vector * output, matrix * A, vector * a) {
+    if (a -> n != A -> n || output -> n != A -> m) {
+        printf("DIMENSIONS OF A: %d x %d, a: %d, AND output: %d DON'T MATCH", A -> m, A -> n, a-> n, output -> n);
+        return;
+    }
+
+    for (int x = 0; x< A -> m; x++) {
+        output -> data[x] = 0;
+        for (int i = 0; i < a -> n; i++) {
+            output -> data[x] += A -> data[A -> n * x + i] * a -> data[i];
+        }
+    }
+
+}
+void mult_mat(matrix * output, matrix * A, matrix * B) {
+    if (A -> n != B -> m || output -> m != A -> m || output -> n != B -> n) {
+        printf("DIMENSIONS OF A: %d x %d, B: %d x %d, AND OUTPUT: %d x %d DON'T MATCH", A -> m, A -> n, B -> m, B -> n, output -> m, output -> n);
+        return;
+    }
+
+    //out [i][j] = sum {A[i][k] * B[k][j]}
+    //loop over i, j, k
+    for (int i = 0; i< A -> m; i++) {
+        for (int j = 0; j < B -> n; j++) {
+            output -> data[i * output -> n + j] = 0;
+            for (int k = 0; k < A -> n; k++) {
+                output -> data[i * output -> n + j] += A -> data[i * A -> n + k] * B -> data[k * B -> n + j];
+            }
+        }
+    }
+}
+
+void add_vec(vector * output, vector * a, vector * b) {
+    if (a -> n != b -> n || output -> n != a -> n) {
+        printf("DIMENSIONS OF a: %d, b: %d, AND output: %d DON'T MATCH", a -> n, b -> n, output -> n);
+        return;
+    }
+
+    for (int x = 0; x<output -> n; x++) output -> data[x] = a -> data[x] + b -> data[x];
+
+}
+void add_mat(matrix * output, matrix * A, matrix * B) {
+    if (A -> n != B -> n || A -> m != B -> m || output -> m != A -> m || output -> n != A -> n) {
+        printf("DIMENSIONS OF A: %d x %d, B: %d x %d, AND OUTPUT: %d x %d DON'T MATCH", A -> m, A -> n, B -> m, B -> n, output -> m, output -> n);
+        return;
+    }
+
+    for (int x = 0; x<output -> m * output -> n; x++) output -> data[x] = A -> data[x] + B -> data[x];
+}
+
+void apply_act(vector * output, vector * a, double (*act)(double)) {
+    if (output -> n != a -> n) {
+        printf("DIMENSIONS OF a: %d, AND output: %d DON'T MATCH", a -> n, output -> n);
+        return;
+    }
+
+    for (int x = 0; x<output -> n; x++) output -> data[x] = act(a -> data[x]);
+}
+int argmax(vector * in) {
+    int ind = 0;
+    double max = in -> data[0];
+    for (int x = 1; x<in -> n; x++) {
+        if (in -> data[x] > max) {
+            max = in -> data[x];
+            ind = x;
+        }
+    }
+    return ind;
+}
+
+
+void print_mat(matrix * in) {
+    for (int x = 0; x<in -> m; x++) {
+        for (int y = 0; y < in -> n; y++) {
+            printf("%f ", in -> data[x * in -> n + y]);
+        }
+        printf("\n");
+    }
+}
+void print_vec(vector * in) {
+    for (int x = 0; x<in -> n; x++) printf("%f ", in -> data[x]);
+    printf("\n");
+}
+
+void free_matrix(matrix * in) {
+    free(in -> data);
+    free(in);
+}
+void free_vector(vector * in) {
+    free (in -> data);
+    free(in);
+}
