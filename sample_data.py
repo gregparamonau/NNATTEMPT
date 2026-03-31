@@ -7,7 +7,7 @@ if __name__ == "__main__":
     count = 0
     with open(read_file_output, "r") as f:
         for line in f:
-            if (count % 26 == 0): 
+            if (count % 3 == 0): 
                 data.append(line)
             count += 1
     f.close()
